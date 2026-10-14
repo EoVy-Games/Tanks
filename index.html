@@ -7,7 +7,7 @@
 <meta name="theme-color" content="#2a1c10">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2347552f'/%3E%3Crect x='8' y='36' width='48' height='14' rx='7' fill='%2329241f'/%3E%3Crect x='12' y='26' width='38' height='12' rx='4' fill='%232f6be0'/%3E%3Cpath d='M20 27a11 9 0 0 1 22 0z' fill='%232f6be0'/%3E%3Crect x='36' y='17' width='22' height='6' rx='3' fill='%232f6be0'/%3E%3C/svg%3E">
 <style>html,body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
-<title>Tanks de Bois</title>
+<title>Tanks!</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Nunito:wght@600;700;800;900&display=swap">
@@ -251,7 +251,7 @@ input:focus-visible{outline:3px solid var(--brass);outline-offset:2px}
 
 <div class="screen" id="titleScreen" hidden>
   <div class="crate">
-    <h1 class="stencil">Tanks de Bois</h1>
+    <h1 class="stencil">Tanks!</h1>
     <p class="tag">Escadron jouet · 100 missions · 9 types d'ennemis</p>
     <p class="lead">Détruis tous les tanks ennemis de chaque mission. Tes obus rebondissent une fois sur les murs, et peuvent te toucher aussi. Les mines font sauter les blocs roses.</p>
     <div class="modes">
@@ -843,6 +843,15 @@ const TYPES = {
   white:  { name: 'Blanc', desc: 'Invisible : suis ses traces', color: 0xf2f0e8, speed: 1.85, turn: 7, fireCd: 0.42, reload: 1.2, bullets: 5, bounces: 1, bspd: 4.5, mines: 2, mineRate: 0.18, turret: 3.6, samples: 44, noise: 0.035, lead: 0.8, style: 'offensive', pref: 4.5, dodge: 0.85, invisible: true },
   black:  { name: 'Noir', desc: 'Le plus rapide, il fonce', color: 0x2a2a2f, speed: 2.6, turn: 8, fireCd: 0.55, reload: 0.9, bullets: 2, bounces: 0, bspd: 8.4, rocket: true, mines: 2, mineRate: 0.28, turret: 4.6, samples: 24, noise: 0.02, lead: 0.9, style: 'offensive', pref: 1.8, dodge: 0.92 },
 };
+// Pace: everything moves and fires a notch faster than the original feel.
+const PACE = { move: 1.3, turn: 1.3, shell: 6.2, rocket: 10.8, fire: 0.82, turret: 1.35 };
+for (const t of Object.values(TYPES)) {
+  t.speed *= PACE.move; t.turn *= PACE.turn;
+  t.bspd = t.rocket ? PACE.rocket : PACE.shell;
+  if (t.fireCd) t.fireCd *= PACE.fire;
+  if (t.reload) t.reload *= PACE.fire;
+  if (t.turret) t.turret *= PACE.turret;
+}
 const TYPE_ORDER = ['brown', 'grey', 'teal', 'yellow', 'red', 'green', 'purple', 'white', 'black'];
 const UNLOCK = { brown: 1, grey: 2, teal: 5, yellow: 8, red: 10, green: 12, purple: 15, white: 20, black: 50 };
 const CHAR_TYPE = { b: 'brown', g: 'grey', t: 'teal', y: 'yellow', r: 'red', G: 'green', v: 'purple', w: 'white', k: 'black' };
@@ -1831,7 +1840,7 @@ function updateBullets(dt) {
 const MINE_R = 1.75;
 function layMine(t) {
   const mm = getMineMesh();
-  const m = { id: nextMineId++, x: t.x, z: t.z, owner: t, team: t.team, age: 0, fuse: 10, dead: false, mesh: mm, lit: false };
+  const m = { id: nextMineId++, x: t.x, z: t.z, owner: t, team: t.team, age: 0, fuse: 8, dead: false, mesh: mm, lit: false };
   vsEv('l', r2(t.x));
   mm.group.position.set(wx(m.x), 0, wz(m.z));
   G.mines.push(m);
@@ -2383,7 +2392,7 @@ function musicLayers() {
   return { wood: ['teal', 'yellow', 'red', 'green', 'purple', 'white', 'black'].some(k => ks.has(k)), brass: ['red', 'green', 'purple', 'white', 'black'].some(k => ks.has(k)), tension: ks.has('white') || ks.has('black') };
 }
 function startIntro(retry) {
-  G.state = 'intro'; G.timer = retry ? 2.2 : 2.8; camIntro = 1;
+  G.state = 'intro'; G.timer = retry ? 1.6 : 2.1; camIntro = 1;
   const list = enemyTypesAlive();
   showBanner('Mission', pad2(G.mission), `Tanks ennemis : ${list.length}${retry ? ` · Réserve : ${G.lives}` : ''}`, typeCounts(list));
   $('hud').hidden = false;
@@ -2405,7 +2414,7 @@ function startGame(m) {
   startIntro(false);
 }
 function onCleared() {
-  G.state = 'cleared'; G.timer = 3.0; G.invuln = true;
+  G.state = 'cleared'; G.timer = 2.3; G.invuln = true;
   SFX.stopMusic(); SFX.jClear();
   let sub = 'Tous les tanks ennemis sont détruits.';
   if (G.mission % 5 === 0 && G.mission < 100) { G.lives++; sub = '+1 tank en réserve !'; updateHUD(); }
@@ -2414,7 +2423,7 @@ function onCleared() {
   if (G.mission + 1 > G.best && G.mission < 100) { G.best = G.mission + 1; store.set('best', G.best); }
 }
 function onDeath() {
-  G.state = 'dead'; G.timer = 2.6;
+  G.state = 'dead'; G.timer = 2.1;
   SFX.stopMusic();
   setTimeout(() => { if (G.state === 'dead') SFX.jLose(); }, 500);
 }
@@ -2584,7 +2593,7 @@ function vsNextRound() {
   VS.round++;
   VS.mapIdx = (VS.mapBase + VS.round - 1) % PVP_MAPS.length;
   setupRound();
-  vsSetPhase('countdown', 2.6);
+  vsSetPhase('countdown', 2.0);
 }
 function vsSetPhase(ph, t) { VS.phase = ph; VS.timer = t || 0; onVsPhase(); syncBackgroundTicker(); }
 function onVsPhase() {
@@ -2686,7 +2695,7 @@ function vsUpdateAuthority(dt) {
           const w = alive.length === 1 ? alive[0] : null;
           VS.roundWinner = w ? w.slot : -1;
           if (w) w.score++;
-          vsSetPhase('roundEnd', 3.2);
+          vsSetPhase('roundEnd', 2.5);
         }
       } else VS.settle = 0;
     }
@@ -2781,7 +2790,7 @@ function guestSnap(s) {
 function guestRenderProjectiles(dt) {
   const now = performance.now() / 1000;
   for (const b of VS.gb.values()) {
-    const sp = b.rocket ? 8.4 : 4.5, age = Math.min(0.15, now - b.st);
+    const sp = b.rocket ? PACE.rocket : PACE.shell, age = Math.min(0.15, now - b.st);
     const tx = b.sx + b.dx * sp * age, tz = b.sz + b.dz * sp * age;
     if (b.init) { const k = Math.min(1, dt * 20); b.x += (tx - b.x) * k; b.z += (tz - b.z) * k; } else { b.x = tx; b.z = tz; b.init = true; }
     b.mesh.position.set(wx(b.x), 0.46, wz(b.z)); b.mesh.rotation.y = -Math.atan2(b.dz, b.dx);
@@ -3436,7 +3445,7 @@ function frame(now) {
   const dt = Math.min(window.__testFast ? 0.2 : 0.05, (now - last) / 1000); last = now;
   update(dt);
   // camera: intro dolly + shake
-  camIntro = Math.max(0, camIntro - dt * 0.9);
+  camIntro = Math.max(0, camIntro - dt * 1.3);
   const ease = camIntro * camIntro * (3 - 2 * camIntro);
   const d = camDist * (1 + ease * 0.08);
   shake = Math.max(0, shake - dt * 0.9);
