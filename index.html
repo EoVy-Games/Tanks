@@ -7,6 +7,7 @@
 <meta name="theme-color" content="#2a1c10">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2347552f'/%3E%3Crect x='8' y='36' width='48' height='14' rx='7' fill='%2329241f'/%3E%3Crect x='12' y='26' width='38' height='12' rx='4' fill='%232f6be0'/%3E%3Cpath d='M20 27a11 9 0 0 1 22 0z' fill='%232f6be0'/%3E%3Crect x='36' y='17' width='22' height='6' rx='3' fill='%232f6be0'/%3E%3C/svg%3E">
 <style>html,body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
+<script src="config.js"></script>
 <title>Tanks!</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -332,7 +333,7 @@ input:focus-visible{outline:3px solid var(--brass);outline-offset:2px}
 
       </div>
     </div>
-    <p class="foot" id="netFoot">Envoie le lien du jeu et le code de la partie à tes amis. La connexion se fait directement entre navigateurs ; l’hôte garde son onglet ouvert pendant la partie.</p>
+    <p class="foot" id="netFoot">Envoie le lien du jeu et le code de la partie à tes amis. La partie tourne dans le navigateur de l’hôte : il garde son onglet ouvert pendant la partie.</p>
     <div class="row"><button class="btn ghost" id="onlineBack">Retour</button></div>
   </div>
 </div>
@@ -379,7 +380,6 @@ input:focus-visible{outline:3px solid var(--brass);outline-offset:2px}
 <div class="hint" id="hint" hidden></div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script>
 const LEVELS = [
 // 1
@@ -2890,9 +2890,10 @@ function netErr(e) {
   const c = e && e.code;
   if (c === 'no_game') return 'Aucune partie ouverte avec ce code. Vérifie-le avec l’hôte.';
   if (c === 'code_taken') return 'Ce code est déjà utilisé, réessaie.';
-  if (c === 'upstream_error') return 'Connexion impossible. Vérifie ta connexion internet : certains réseaux bloquent les connexions directes entre navigateurs.';
-  if (c === 'not_permitted') return 'Les parties en ligne ne sont pas autorisées pour ce compte sur cette page.';
-  if (c === 'limit_reached') return 'Trop de salons ouverts pour le moment, réessaie dans un instant.';
+  if (c === 'room_full') return 'Cette partie est complète.';
+  if (c === 'bad_code') return 'Ce code de partie n’est pas valide.';
+  if (c === 'origin') return 'Le serveur multijoueur n’accepte pas les connexions depuis ce site. Vérifie le réglage ALLOWED_ORIGINS du Worker.';
+  if (c === 'upstream_error') return 'Impossible de joindre le serveur multijoueur. Vérifie ta connexion internet et réessaie.';
   return 'Connexion impossible pour le moment, réessaie.';
 }
 const Net = {
@@ -2909,8 +2910,9 @@ const Net = {
   max() { return this.settings.mode === 'duel' ? 2 : 4; },
   init() {
     if (this.status !== 'off') return;
-    this.status = typeof window.Peer === 'function' ? 'ready' : 'unavailable';
-    if (this.status === 'ready') this.ns = makeP2PTransport();
+    const base = relayBase();
+    this.status = base ? 'ready' : 'unavailable';
+    if (base) this.ns = makeRelayTransport(base);
     renderOnline();
   },
   async host() {
@@ -3027,52 +3029,34 @@ function leaveVersusToRoomSilently() {
   clearEntities(); setupPreview();
 }
 
-// ================================================================ peer-to-peer transport (PeerJS / WebRTC)
-// Same surface as the claude.ai room the game already uses (presence, peers, onPeers, leave),
-// built as a star: the host's browser accepts every guest; guests talk only to the host.
-const P2P_PREFIX = 'tanksdebois-';
-function makeP2PTransport() {
-  const me = Object.freeze({ peer: 'me', by: null, isMe: true, sameTab: true, kind: 'viewer', guest: false, presence: Object.freeze({}), updatedAt: Date.now() });
-  const snap = Object.freeze([me]);
-  return {
-    p2p: true,
-    presence() { return Promise.resolve(); },
-    peers: () => snap,
-    onPeers(fn) { setTimeout(() => fn({ peers: snap, joined: snap, left: [], updated: [] }), 0); return () => { }; },
-    onConnection(fn) { setTimeout(() => fn(true), 0); return () => { }; },
-    connected: () => true,
-    join(code, role) { return p2pRoom(code, role); }
-  };
+// ================================================================ relay transport (Cloudflare Worker, WebSocket)
+// Same surface the game already uses (presence, peers, onPeers, leave). Every player opens one
+// WebSocket to the relay (wss on port 443, plain web traffic) and the relay forwards presences.
+function relayBase() {
+  let u = String(window.TANKS_RELAY || '').trim().replace(/\/+$/, '');
+  if (!u || /TON-SOUS-DOMAINE|YOUR-SUBDOMAIN/i.test(u)) return '';
+  if (/^https?:\/\//i.test(u)) u = u.replace(/^http/i, 'ws');
+  if (!/^wss?:\/\//i.test(u)) u = 'wss://' + u;
+  return u;
 }
-function p2pRoom(code, role) {
+function makeRelayTransport(base) {
+  return { relay: true, join: (code, role) => relayRoom(base, code, role) };
+}
+function relayRoom(base, code, role) {
   return new Promise((resolve, reject) => {
-    const hostId = P2P_PREFIX + code;
-    const conns = new Map(), pres = new Map(), listeners = new Set(), errListeners = new Set();
-    let peer = null, myId = null, settled = false, dead = false, snapshot = Object.freeze([]), myPres = {}, sendTimer = null, keepTimer = null;
+    const pres = new Map(), listeners = new Set(), errListeners = new Set();
+    let ws, myId = null, settled = false, dead = false, snapshot = Object.freeze([]), myPres = {}, sendTimer = null, pingTimer = null;
     const rebuild = () => {
       snapshot = Object.freeze([...pres].map(([id, p]) => Object.freeze({ peer: id, by: null, isMe: id === myId, sameTab: id === myId, kind: 'viewer', guest: false, presence: p, updatedAt: Date.now() })));
     };
     const notify = () => { rebuild(); for (const fn of listeners) { try { fn({ peers: snapshot, joined: [], left: [], updated: [] }); } catch (e) { console.error(e); } } };
-    const sendTo = (c, msg) => { try { if (c && c.open) c.send(msg); } catch (e) { } };
-    const broadcast = msg => { for (const c of conns.values()) sendTo(c, msg); };
-    const flush = () => { sendTimer = null; if (!dead && myId) broadcast({ t: 'pres', id: myId, p: myPres }); };
-    const cleanup = () => { dead = true; clearTimeout(sendTimer); clearInterval(keepTimer); try { if (peer) peer.destroy(); } catch (e) { } };
+    const flush = () => { sendTimer = null; if (!dead && ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'pres', p: myPres })); };
+    const stop = () => { dead = true; clearTimeout(sendTimer); clearInterval(pingTimer); clearTimeout(timer); };
     const fail = (codeName, message) => {
-      if (!settled) { settled = true; clearTimeout(timer); cleanup(); reject({ code: codeName, message }); }
-      else if (!dead) { for (const fn of errListeners) { try { fn({ code: codeName, message }); } catch (e) { } } }
-    };
-    const dropPeer = id => { conns.delete(id); if (pres.delete(id)) notify(); };
-    const wire = conn => {
-      conn.on('data', msg => {
-        if (dead || !msg || typeof msg !== 'object') return;
-        if (msg.t === 'bye') { dropPeer(conn.peer); try { conn.close(); } catch (e) { } return; }
-        if (msg.t !== 'pres' || !msg.p || typeof msg.p !== 'object' || Array.isArray(msg.p)) return;
-        if (role === 'guest' && conn.peer !== hostId) return;
-        pres.set(conn.peer, Object.freeze(msg.p));
-        notify();
-      });
-      conn.on('close', () => dropPeer(conn.peer));
-      conn.on('error', () => dropPeer(conn.peer));
+      if (!settled) { settled = true; stop(); try { ws.close(); } catch (e) { } reject({ code: codeName, message }); return; }
+      if (dead) return;
+      stop();
+      for (const fn of errListeners) { try { fn({ code: codeName, message }); } catch (e) { } }
     };
     const api = {
       name: code,
@@ -3091,50 +3075,43 @@ function p2pRoom(code, role) {
         setTimeout(() => { if (listeners.has(fn)) fn({ peers: snapshot, joined: snapshot, left: [], updated: [] }); }, 0);
         return () => { listeners.delete(fn); if (onErr) errListeners.delete(onErr); };
       },
-      connected: () => !dead,
+      connected: () => !dead && ws && ws.readyState === 1,
       onConnection(fn) { setTimeout(() => fn(!dead), 0); return () => { }; },
       async leave() {
         if (dead) return;
-        broadcast({ t: 'bye' });
         listeners.clear(); errListeners.clear();
-        dead = true;
-        setTimeout(cleanup, 120);
+        stop();
+        try { ws.close(1000, 'leave'); } catch (e) { }
       }
     };
-    const timer = setTimeout(() => fail(role === 'host' ? 'upstream_error' : 'no_game', 'timeout'), 15000);
-    try { peer = role === 'host' ? new window.Peer(hostId, { debug: 0 }) : new window.Peer({ debug: 0 }); }
+    const timer = setTimeout(() => fail('upstream_error', 'timeout'), 12000);
+    try { ws = new WebSocket(`${base}/room/${encodeURIComponent(code)}?role=${role}`); }
     catch (e) { clearTimeout(timer); reject({ code: 'upstream_error', message: String(e) }); return; }
-    peer.on('error', err => {
-      const t = err && err.type;
-      if (t === 'unavailable-id') fail('code_taken', 'id taken');
-      else if (t === 'peer-unavailable') fail('no_game', 'no host');
-      else if (!settled) fail('upstream_error', String(t || err));
-    });
-    peer.on('disconnected', () => { if (!dead && role === 'host') { try { peer.reconnect(); } catch (e) { } } });
-    peer.on('open', id => {
-      if (dead) return;
-      myId = id; pres.set(myId, Object.freeze({})); rebuild();
-      if (role === 'host') {
-        peer.on('connection', conn => {
-          if (conns.size >= 7) { setTimeout(() => { try { conn.close(); } catch (e) { } }, 300); return; }
-          wire(conn);
-          conn.on('open', () => { if (dead) return; conns.set(conn.peer, conn); pres.set(conn.peer, Object.freeze({})); sendTo(conn, { t: 'pres', id: myId, p: myPres }); notify(); });
-        });
+    ws.onmessage = ev => {
+      if (dead || typeof ev.data !== 'string' || ev.data === 'pong') return;
+      let msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
+      if (!msg || typeof msg !== 'object') return;
+      if (msg.t === 'error') { fail(String(msg.code || 'upstream_error'), 'refused'); return; }
+      if (msg.t === 'welcome') {
+        myId = String(msg.id);
+        pres.set(myId, Object.freeze({}));
+        if (Array.isArray(msg.peers)) for (const [id, p] of msg.peers) if (id && p && typeof p === 'object') pres.set(String(id), Object.freeze(p));
+        rebuild();
         settled = true; clearTimeout(timer);
-        keepTimer = setInterval(flush, 1000);
+        pingTimer = setInterval(() => { if (ws.readyState === 1) ws.send('ping'); }, 20000);
         resolve(api);
-      } else {
-        const conn = peer.connect(hostId, { serialization: 'json', reliable: false });
-        wire(conn);
-        conn.on('open', () => {
-          if (dead) return;
-          conns.set(hostId, conn); settled = true; clearTimeout(timer);
-          keepTimer = setInterval(flush, 1000);
-          resolve(api);
-          flush();
-        });
+        if (Object.keys(myPres).length) flush();
+        notify();
+        return;
       }
-    });
+      if (msg.t === 'pres' && msg.id && msg.p && typeof msg.p === 'object' && !Array.isArray(msg.p)) {
+        pres.set(String(msg.id), Object.freeze(msg.p)); notify();
+      } else if (msg.t === 'left' && msg.id) {
+        if (pres.delete(String(msg.id))) notify();
+      }
+    };
+    ws.onerror = () => { };
+    ws.onclose = () => fail('upstream_error', 'closed');
   });
 }
 
@@ -3183,7 +3160,8 @@ function renderOnline() {
   const ready = Net.status === 'ready';
   $('netStatus').textContent = Net.busy ? 'Connexion en cours…'
     : ready ? 'Prêt · crée une partie ou entre le code que l’hôte t’a envoyé.'
-    : 'Le multijoueur en ligne fonctionne sur la version hébergée du jeu (GitHub Pages).';
+    : ('TANKS_RELAY' in window ? 'Serveur multijoueur non configuré : renseigne l’adresse du Worker Cloudflare dans config.js (TANKS_RELAY).'
+      : 'Le multijoueur en ligne fonctionne sur la version hébergée du jeu (GitHub Pages).');
   $('netStatus').classList.toggle('warn', !ready);
   $('hostBtn').disabled = !ready || !!Net.busy; $('joinBtn').disabled = !ready || !!Net.busy;
 }

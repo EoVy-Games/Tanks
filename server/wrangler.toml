@@ -1,0 +1,18 @@
+name = "tanks-relay"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+# Une instance de GameRoom par code de partie.
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "GameRoom"
+
+# L'offre gratuite de Cloudflare impose le stockage SQLite pour les Durable Objects.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["GameRoom"]
+
+[vars]
+# Adresse(s) du site autorisé à se connecter, séparées par des virgules.
+# Exemple : "https://ton-pseudo.github.io". Laisse vide pour tout autoriser (tests).
+ALLOWED_ORIGINS = "https://tanks.eovy.fr"
