@@ -1,0 +1,12 @@
+{
+  "name": "tanks-relay",
+  "private": true,
+  "description": "Relais multijoueur de Tanks! (Cloudflare Worker + Durable Object)",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "4.143.1"
+  }
+}
