@@ -159,6 +159,11 @@ input:focus-visible{outline:3px solid var(--brass);outline-offset:2px}
 .check input{margin-top:4px;width:18px;height:18px;accent-color:var(--brass);flex:none}
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 20px);max-width:calc(100% - 32px);background:#1c160f;color:var(--khaki);border:2px solid var(--brass);border-radius:6px;padding:10px 16px;font:700 14px/1.4 var(--font-body);box-shadow:0 10px 30px rgba(0,0,0,.45);z-index:20}
 .crate .lead + .row{margin-top:16px}
+.row.settings{align-items:center;gap:12px 18px}
+.setting{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.setting .mini{margin:0}
+#pauseScreen .mini{margin-top:18px}
+#pauseScreen .seg{position:relative}
 
 .crate.wide{width:min(1060px,100%)}
 .map-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;position:relative}
@@ -269,7 +274,12 @@ input:focus-visible{outline:3px solid var(--brass);outline-offset:2px}
         <div class="mode-btns"><button class="btn" id="onlineBtn">Multijoueur</button></div>
       </div>
     </div>
-    <div class="row"><button class="btn ghost sm" id="soundBtn">Son : activé</button></div>
+    <div class="row settings">
+      <button class="btn ghost sm" id="soundBtn">Son : activé</button>
+      <div class="setting"><span class="mini">Graphismes</span>
+        <div class="seg" id="qualitySeg"><button data-v="auto" aria-pressed="false">Auto</button><button data-v="high" aria-pressed="false">Haute</button><button data-v="medium" aria-pressed="false">Moyenne</button><button data-v="low" aria-pressed="false">Basse</button></div>
+      </div>
+    </div>
     <div class="cols">
       <div>
         <p class="sect-h">Commandes</p>
@@ -293,6 +303,9 @@ input:focus-visible{outline:3px solid var(--brass);outline-offset:2px}
       <button class="btn ghost" id="soundBtn2">Son : activé</button>
       <button class="btn ghost" id="quitBtn">Menu</button>
     </div>
+    <p class="mini">Graphismes</p>
+    <div class="seg" id="qualitySeg2"><button data-v="auto" aria-pressed="false">Auto</button><button data-v="high" aria-pressed="false">Haute</button><button data-v="medium" aria-pressed="false">Moyenne</button><button data-v="low" aria-pressed="false">Basse</button></div>
+    <p class="foot" id="perfInfo"></p>
   </div>
 </div>
 
@@ -977,17 +990,41 @@ function generateLevel(m) {
 }
 const getLevel = m => m <= LEVELS.length ? parseLevel(LEVELS[m - 1]) : generateLevel(m);
 
-// ================================================================ renderer
+// ================================================================ renderer & graphics quality
+// Software WebGL (remote desktop, VMs, no GPU driver) draws every pixel on the CPU: start low there.
+const GL_INFO = (() => {
+  try {
+    const c = document.createElement('canvas');
+    const gl = c.getContext('webgl2') || c.getContext('webgl');
+    if (!gl) return { name: '', soft: false };
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    const name = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER) || '');
+    const lose = gl.getExtension('WEBGL_lose_context'); if (lose) lose.loseContext();
+    return { name, soft: /swiftshader|llvmpipe|softpipe|software|basic render|microsoft basic|\bwarp\b/i.test(name) };
+  } catch (e) { return { name: '', soft: false }; }
+})();
+// budget: max rendered pixels per frame; shadows: 0 off, 1 hard, 2 soft; fx: share of particles kept
+const QUALITY = {
+  high:   { label: 'Haute',   budget: 3.7e6,  maxDpr: 2,   shadows: 2, shadowSize: 2048, fx: 1 },
+  medium: { label: 'Moyenne', budget: 2.1e6,  maxDpr: 1.5, shadows: 1, shadowSize: 1024, fx: 0.7 },
+  low:    { label: 'Basse',   budget: 0.95e6, maxDpr: 1,   shadows: 0, shadowSize: 512,  fx: 0.45 },
+};
+let qualityPref = store.get('quality', 'auto');
+if (!['auto', 'high', 'medium', 'low'].includes(qualityPref)) qualityPref = 'auto';
+const autoTier = () => (GL_INFO.soft ? 'low' : 'high');
+let qTier = qualityPref === 'auto' ? autoTier() : qualityPref;
+let dynScale = 1, FXQ = QUALITY[qTier].fx;
+
 let renderer;
 try {
-  renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  renderer = new THREE.WebGLRenderer({ antialias: !GL_INFO.soft && qTier === 'high', powerPreference: 'high-performance' });
 } catch (e) {
   $('err').hidden = false; $('err').textContent = 'WebGL est indisponible sur cet appareil : le jeu ne peut pas démarrer.';
   return;
 }
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.setPixelRatio(1);
+renderer.shadowMap.enabled = QUALITY[qTier].shadows > 0;
+renderer.shadowMap.type = QUALITY[qTier].shadows === 2 ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
 $('stage').appendChild(renderer.domElement);
@@ -1201,7 +1238,7 @@ scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff0d8, 2.7);
 sun.position.set(-7, 22, 10);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.mapSize.set(QUALITY[qTier].shadowSize, QUALITY[qTier].shadowSize);
 sun.shadow.camera.left = -15; sun.shadow.camera.right = 15; sun.shadow.camera.top = 13; sun.shadow.camera.bottom = -13;
 sun.shadow.camera.near = 5; sun.shadow.camera.far = 50;
 sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.025;
@@ -1351,7 +1388,7 @@ class Particles {
     scene.add(this.points);
   }
   spawn(x, y, z, vx, vy, vz, life, s0, s1, r, g, b, a0, a1, drag = 0, grav = 0, r1, g1, b1) {
-    if (this.n >= this.max) return;
+    if (this.n >= this.max || (FXQ < 1 && Math.random() > FXQ)) return;
     const p = this.s[this.n++];
     p.x = x; p.y = y; p.z = z; p.vx = vx; p.vy = vy; p.vz = vz; p.life = 0; p.max = life;
     p.s0 = s0; p.s1 = s1; p.r = r; p.g = g; p.b = b; p.a0 = a0; p.a1 = a1; p.drag = drag; p.grav = grav;
@@ -2290,9 +2327,85 @@ let camDist = 30, camIntro = 0;
 const camOff = { x: 0, z: 1 }; // horizontal direction from target to camera
 function screenToBoard(sx, sy) { const fx = -camOff.x, fz = -camOff.z; return { x: -fz * sx - fx * sy, z: fx * sx - fz * sy }; }
 const PITCH = THREE.MathUtils.degToRad(60);
+// Render resolution: screen size × pixel density, capped to the quality budget, then scaled by
+// the automatic adjustment. The canvas is stretched back to full screen by CSS.
+const _resV = new THREE.Vector2();
+function applyResolution() {
+  const q = QUALITY[qTier], w = innerWidth, h = innerHeight;
+  let pr = Math.min(window.devicePixelRatio || 1, q.maxDpr);
+  if (w * h * pr * pr > q.budget) pr = Math.sqrt(q.budget / (w * h));
+  pr = Math.max(0.35, pr * dynScale);
+  const cur = renderer.getSize(_resV);
+  if (Math.abs(renderer.getPixelRatio() - pr) > 0.005 || cur.x !== w || cur.y !== h) {
+    renderer.setPixelRatio(pr);
+    renderer.setSize(w, h, false);
+  }
+  updatePerfInfo();
+  smokeFX.mat.uniforms.scale.value = fireFX.mat.uniforms.scale.value = renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
+}
+function applyQuality() {
+  const q = QUALITY[qTier];
+  FXQ = q.fx;
+  const on = q.shadows > 0, type = q.shadows === 2 ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+  if (renderer.shadowMap.enabled !== on || renderer.shadowMap.type !== type) {
+    renderer.shadowMap.enabled = on; renderer.shadowMap.type = type;
+    scene.traverse(o => { if (o.material) for (const m of [].concat(o.material)) m.needsUpdate = true; });
+  }
+  if (sun.shadow.mapSize.x !== q.shadowSize) {
+    sun.shadow.mapSize.set(q.shadowSize, q.shadowSize);
+    if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+  }
+  sun.shadow.radius = q.shadows === 2 ? 3 : 1;
+  applyResolution();
+}
+// Auto mode: measure frames per second and lower the render resolution, then the quality tier,
+// while the game runs too slowly. If lowering the resolution does not help (the screen refresh rate
+// or the CPU is the limit), go back and stop trying for a while.
+const perf = { acc: 0, frames: 0, fps: 0, slow: 0, fast: 0, pending: false, before: 0, lockedUntil: 0 };
+function perfTick(raw, now) {
+  if (raw > 0.5 || document.hidden) { perf.acc = 0; perf.frames = 0; return; }
+  perf.acc += raw; perf.frames++;
+  if (perf.acc < 1) return;
+  perf.fps = perf.frames / perf.acc; perf.acc = 0; perf.frames = 0;
+  if (!$('pauseScreen').hidden) updatePerfInfo();
+  if (qualityPref !== 'auto' || now < perf.lockedUntil) return;
+  if (perf.pending) {
+    perf.pending = false;
+    if (perf.fps < perf.before * 1.05) { dynScale = Math.min(1, dynScale / 0.85); applyResolution(); perf.lockedUntil = now + 60000; return; }
+  }
+  if (perf.fps < 45) { perf.slow++; perf.fast = 0; }
+  else if (perf.fps > 56) { perf.fast++; perf.slow = 0; }
+  else { perf.slow = 0; perf.fast = 0; }
+  if (perf.slow >= 2) {
+    perf.slow = 0;
+    if (dynScale > 0.62) { perf.before = perf.fps; dynScale *= 0.85; perf.pending = true; applyResolution(); }
+    else if (qTier !== 'low') { qTier = qTier === 'high' ? 'medium' : 'low'; dynScale = 1; applyQuality(); }
+  } else if (perf.fast >= 8 && dynScale < 1) {
+    perf.fast = 0; dynScale = Math.min(1, dynScale / 0.9); applyResolution();
+  }
+}
+function setQuality(v) {
+  qualityPref = v; store.set('quality', v);
+  qTier = v === 'auto' ? autoTier() : v;
+  dynScale = 1; perf.lockedUntil = 0; perf.pending = false; perf.slow = perf.fast = 0;
+  applyQuality(); syncQualityUI();
+}
+function syncQualityUI() {
+  for (const id of ['qualitySeg', 'qualitySeg2']) {
+    const el = $(id); if (!el) continue;
+    for (const b of el.querySelectorAll('button')) { const on = b.dataset.v === qualityPref; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+  }
+  updatePerfInfo();
+}
+function updatePerfInfo() {
+  const el = $('perfInfo'); if (!el) return;
+  const c = renderer.domElement;
+  el.textContent = `Rendu ${c.width}×${c.height} · ${QUALITY[qTier].label.toLowerCase()}${qualityPref === 'auto' ? ' (auto)' : ''}${perf.fps ? ` · ${Math.round(perf.fps)} images/s` : ''}${GL_INFO.soft ? ' · rendu logiciel détecté' : ''}`;
+}
+
 function fitCamera() {
   const w = innerWidth, h = innerHeight;
-  renderer.setSize(w, h, false);
+  applyResolution();
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   const corners = [];
@@ -2328,7 +2441,6 @@ function fitCamera() {
   place(camDist, tz);
   scene.fog.near = camDist + 8; scene.fog.far = camDist + 45;
   camera.far = camDist + 120; camera.updateProjectionMatrix();
-  smokeFX.mat.uniforms.scale.value = fireFX.mat.uniforms.scale.value = renderer.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
 }
 addEventListener('resize', () => { const was = camOff.x; fitCamera(); if (was !== camOff.x && G.level) { const keep = new Uint8Array(G.grid); buildLevel({ grid: keep, w: W, h: H }); } });
 
@@ -2477,7 +2589,7 @@ function togglePause() {
     $('pauseInfo').textContent = `La partie continue en ligne pendant ce menu. Code ${Net.code.toUpperCase()}.`;
     $('quitBtn').textContent = 'Quitter la partie';
     setSoundLabels();
-    showScreen('pauseScreen');
+    showScreen('pauseScreen'); updatePerfInfo();
     return;
   }
   $('quitBtn').textContent = 'Menu';
@@ -2485,7 +2597,7 @@ function togglePause() {
     G.prevState = G.state; G.state = 'pause'; SFX.stopMusic();
     $('pauseInfo').textContent = `Mission ${G.mission} · ${G.tanks.filter(t => t.team === 'E' && t.alive).length} ennemi(s) restant(s) · réserve ${G.lives}`;
     setSoundLabels();
-    showScreen('pauseScreen');
+    showScreen('pauseScreen'); updatePerfInfo();
   } else if (G.state === 'pause') {
     G.state = G.prevState; showScreen(null);
     if (G.state === 'play') SFX.music(musicLayers());
@@ -2531,6 +2643,8 @@ $('vsAgain').addEventListener('click', () => {
 $('vsLobby').addEventListener('click', hostBackToRoom);
 $('vsQuit').addEventListener('click', toMenu);
 wireSeg('modeSeg'); wireSeg('winSeg');
+wireSeg('qualitySeg', setQuality); wireSeg('qualitySeg2', setQuality);
+syncQualityUI();
 
 // ================================================================ versus (online)
 const PCOLORS = [0x2f6be0, 0xd8413a, 0x3c9c38, 0xee8a1c];
@@ -3448,8 +3562,12 @@ function frame(now) {
   if (window.__hold) { if (!heldDrawn) { heldDrawn = true; camera.updateMatrixWorld(); updateTags(); renderer.render(scene, camera); } setTimeout(() => frame(performance.now()), 100); last = performance.now(); return; }
   heldDrawn = false;
   nextFrame(frame);
-  const dt = Math.min(window.__testFast ? 0.2 : 0.05, (now - last) / 1000); last = now;
-  update(dt);
+  const raw = (now - last) / 1000; last = now;
+  perfTick(raw, now);
+  const dt = Math.min(window.__testFast ? 0.2 : 0.1, raw);
+  // fixed-size substeps: a slow machine skips frames instead of slowing the game down
+  const steps = Math.max(1, Math.ceil(dt * 60 - 0.05));
+  for (let i = 0; i < steps; i++) update(dt / steps);
   // camera: intro dolly + shake
   camIntro = Math.max(0, camIntro - dt * 1.3);
   const ease = camIntro * camIntro * (3 - 2 * camIntro);
