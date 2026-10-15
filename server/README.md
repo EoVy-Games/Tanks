@@ -8,14 +8,14 @@ Le multijoueur de Tanks! passe par ce petit relais WebSocket hébergé sur Cloud
 
 1. **Workers & Pages → Create application**, puis importer un dépôt Git existant : `EoVy-Games/Tanks`.
 2. Réglages du projet :
-   - **Nom** : `tanks-relay` (doit correspondre au `name` de `wrangler.toml`)
+   - **Nom** : `tanks` (doit correspondre au `name` de `wrangler.toml`)
    - **Root directory** : `server`
    - **Build command** : vide
    - **Deploy command** : `npx wrangler deploy` (valeur par défaut)
-3. **Deploy**. Une fois terminé, la page du Worker affiche son adresse, du type `https://tanks-relay.<compte>.workers.dev`. L'URL `/health` doit répondre `{"ok":true,...}`.
+3. **Deploy**. Une fois terminé, la page du Worker affiche son adresse, du type `https://tanks.<compte>.workers.dev`. L'URL `/health` doit répondre `{"ok":true,...}`.
 4. Dans `config.js`, à la racine du dépôt, renseigne cette adresse en `wss://` :
    ```js
-   window.TANKS_RELAY = 'wss://tanks-relay.<compte>.workers.dev';
+   window.TANKS_RELAY = 'wss://tanks.<compte>.workers.dev';
    ```
 
 Ensuite, chaque commit sur `main` redéploie le Worker automatiquement.

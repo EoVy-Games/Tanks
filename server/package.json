@@ -1,5 +1,5 @@
 {
-  "name": "tanks-relay",
+  "name": "tanks",
   "private": true,
   "description": "Relais multijoueur de Tanks! (Cloudflare Worker + Durable Object)",
   "scripts": {
