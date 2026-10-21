@@ -1759,7 +1759,7 @@ function showBanner(eyebrow, title, sub, icons = '') {
   $('banner').hidden = false;
 }
 function hideBanner() { $('banner').hidden = true; }
-const SCREENS = ['titleScreen', 'pauseScreen', 'overScreen', 'onlineScreen', 'roomScreen', 'vsOverScreen', 'mapScreen', 'garageScreen'];
+const SCREENS = ['titleScreen', 'pauseScreen', 'overScreen', 'onlineScreen', 'roomScreen', 'vsOverScreen', 'mapScreen', 'garageScreen', 'notesScreen'];
 function showScreen(id) { for (const s of SCREENS) $(s).hidden = s !== id; }
 function setupPreview() { G.mode = 'campaign'; loadMission(1, false); G.state = 'title'; }
 function setSoundLabels() { const l = tr(SFX.muted ? 'sound.off' : 'sound.on'); $('soundBtn').textContent = l; $('soundBtn2').textContent = l; }
@@ -1937,6 +1937,7 @@ function setLang(l) {
   renderOnline(); renderRoom();
   if (!$('mapScreen').hidden) renderMap();
   if (!$('garageScreen').hidden) renderGarage();
+  renderNotes();
 }
 wireSeg('langSeg', setLang);
 applyStaticText(); syncLangUI();
@@ -2712,6 +2713,42 @@ $('gOk').addEventListener('click', () => {
 });
 $('myTankBtn').addEventListener('click', () => openGarage('onlineScreen'));
 $('roomTankBtn').addEventListener('click', () => openGarage('roomScreen'));
+
+// ================================================================ patch notes (data in js/changelog.js)
+const fmtDate = iso => {
+  try { return new Intl.DateTimeFormat(LANG === 'fr' ? 'fr-FR' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(iso + 'T12:00:00')); }
+  catch (e) { return iso; }
+};
+function renderNotesButton() {
+  $('verTag').textContent = 'v' + GAME_VERSION;
+  $('notesDot').hidden = store.get('seenVersion', '') === GAME_VERSION;
+}
+function renderNotes() {
+  if ($('notesScreen').hidden) return;
+  $('notesCurrent').textContent = tr('notes.current', { v: GAME_VERSION });
+  const box = $('notesList'); box.textContent = '';
+  CHANGELOG.forEach((v, i) => {
+    const sec = document.createElement('section'); sec.className = 'note';
+    const head = document.createElement('header');
+    const ver = document.createElement('b'); ver.className = 'v'; ver.textContent = 'v' + v.version;
+    const time = document.createElement('time'); time.dateTime = v.date; time.textContent = fmtDate(v.date);
+    head.append(ver, time);
+    if (i === 0) { const c = document.createElement('span'); c.className = 'chip'; c.textContent = tr('notes.new'); head.append(c); }
+    const h = document.createElement('h3'); h.textContent = (v.title && (v.title[LANG] || v.title.fr)) || '';
+    const ul = document.createElement('ul');
+    for (const line of (v.notes && (v.notes[LANG] || v.notes.fr)) || []) { const li = document.createElement('li'); li.textContent = line; ul.append(li); }
+    sec.append(head, h, ul); box.append(sec);
+  });
+}
+function openNotes() {
+  showScreen('notesScreen');
+  renderNotes();
+  store.set('seenVersion', GAME_VERSION);
+  renderNotesButton();
+}
+$('notesBtn').addEventListener('click', () => { SFX.ensure(); openNotes(); });
+$('notesBack').addEventListener('click', () => { buildTitle(); showScreen('titleScreen'); });
+renderNotesButton();
 
 // ================================================================ campaign map (world map of missions)
 const WORLDS = [
