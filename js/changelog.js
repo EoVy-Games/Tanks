@@ -3,6 +3,7 @@
 //   - add a new entry at the top when a push is a new version;
 //   - run `node tools/changelog.mjs` to rewrite CHANGELOG.md;
 //   - on GitHub, merging it into main creates the release (see .github/workflows/release.yml).
+//     `commit` is only needed for versions written after the fact; otherwise the release uses the merge commit.
 // Each version is written twice, in French (fr) and English (en), as short lines for players.
 const CHANGELOG = [
   {
@@ -22,6 +23,7 @@ const CHANGELOG = [
   },
   {
     version: '0.3.0',
+    commit: '0054356', // added afterwards: the commit this version ended on
     date: '2026-10-19',
     title: { fr: 'Tanks personnalisés et français / anglais', en: 'Custom tanks, French and English' },
     notes: {
@@ -41,6 +43,7 @@ const CHANGELOG = [
   },
   {
     version: '0.2.0',
+    commit: 'e99e971', // added afterwards: the commit this version ended on
     date: '2026-10-15',
     title: { fr: 'Serveur multijoueur et performances', en: 'Multiplayer server and performance' },
     notes: {
@@ -58,6 +61,7 @@ const CHANGELOG = [
   },
   {
     version: '0.1.0',
+    commit: '15b8980', // added afterwards: the commit this version ended on
     date: '2026-10-15',
     title: { fr: 'Première version', en: 'First release' },
     notes: {

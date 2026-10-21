@@ -1,10 +1,12 @@
-# Creates a GitHub release when a new version is added at the top of js/changelog.js on main.
+# Publishes a GitHub release for every version of js/changelog.js that does not have one yet.
+# Runs when js/changelog.js changes on main, or by hand from the Actions tab.
 name: Release
 
 on:
   push:
     branches: [main]
     paths: ['js/changelog.js']
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -14,17 +16,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Create the release for the newest version
+      - name: Create missing releases, oldest first
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          V=$(node tools/changelog.mjs --version)
-          if gh release view "v$V" > /dev/null 2>&1; then
-            echo "v$V est déjà publiée, rien à faire."
-            exit 0
-          fi
-          node tools/changelog.mjs --notes "$V" > notes.md
-          gh release create "v$V" --target "$GITHUB_SHA" --title "v$V · $(node tools/changelog.mjs --title "$V")" --notes-file notes.md
+          LATEST=$(node tools/changelog.mjs --version)
+          node tools/changelog.mjs --list | while read -r V COMMIT; do
+            if gh release view "v$V" > /dev/null 2>&1; then
+              echo "v$V : déjà publiée"
+              continue
+            fi
+            TARGET=$(git rev-parse "${COMMIT:-$GITHUB_SHA}")
+            node tools/changelog.mjs --notes "$V" > notes.md
+            if [ "$V" = "$LATEST" ]; then IS_LATEST=true; else IS_LATEST=false; fi
+            gh release create "v$V" --target "$TARGET" --latest="$IS_LATEST" \
+              --title "v$V · $(node tools/changelog.mjs --title "$V")" --notes-file notes.md
+            echo "v$V : publiée sur $TARGET"
+          done

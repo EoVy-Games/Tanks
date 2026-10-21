@@ -3,6 +3,7 @@
 //   node tools/changelog.mjs --version    print the newest version number
 //   node tools/changelog.mjs --title V    print the French title of version V
 //   node tools/changelog.mjs --notes V    print the release text of version V (French, then English)
+//   node tools/changelog.mjs --list       print "version commit" lines, oldest first (commit may be empty)
 import { createRequire } from 'node:module';
 import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -19,6 +20,8 @@ const releaseText = e => `${list(e.notes.fr)}\n\n**English: ${e.title.en}**\n\n$
 const [cmd, arg] = process.argv.slice(2);
 if (cmd === '--version') {
   console.log(GAME_VERSION);
+} else if (cmd === '--list') {
+  for (const e of [...CHANGELOG].reverse()) console.log(`${e.version} ${e.commit || ''}`.trim());
 } else if (cmd === '--title' || cmd === '--notes') {
   const e = find(arg);
   if (!e) { console.error(`Version ${arg} introuvable dans js/changelog.js`); process.exit(1); }
