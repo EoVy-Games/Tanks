@@ -1,0 +1,30 @@
+# Creates a GitHub release when a new version is added at the top of js/changelog.js on main.
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths: ['js/changelog.js']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Create the release for the newest version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=$(node tools/changelog.mjs --version)
+          if gh release view "v$V" > /dev/null 2>&1; then
+            echo "v$V est déjà publiée, rien à faire."
+            exit 0
+          fi
+          node tools/changelog.mjs --notes "$V" > notes.md
+          gh release create "v$V" --target "$GITHUB_SHA" --title "v$V · $(node tools/changelog.mjs --title "$V")" --notes-file notes.md

@@ -192,6 +192,11 @@ const I18N = {
     'type.black.name': 'Noir', 'type.black.desc': 'Le plus rapide, il fonce',
 
     // online tank classes (see PVP_CLASSES in game.js)
+    'notes.btn': 'Notes de version',
+    'notes.title': 'Notes de version',
+    'notes.current': 'Version actuelle : v{v}',
+    'notes.new': 'Nouveau',
+
     'cls.standard.name': 'Standard', 'cls.standard.desc': 'Polyvalent : la référence.',
     'cls.ricochet.name': 'Ricochet', 'cls.ricochet.desc': 'Obus à double rebond, mais lent.',
     'cls.foudre.name': 'Foudre', 'cls.foudre.desc': 'Rapide, roquettes sans rebond.',
@@ -379,6 +384,11 @@ const I18N = {
     'type.purple.name': 'Purple', 'type.purple.desc': 'Fast, 5 shells and mines',
     'type.white.name': 'White', 'type.white.desc': 'Invisible: follow its tracks',
     'type.black.name': 'Black', 'type.black.desc': 'The fastest, it charges',
+
+    'notes.btn': 'Patch notes',
+    'notes.title': 'Patch notes',
+    'notes.current': 'Current version: v{v}',
+    'notes.new': 'New',
 
     'cls.standard.name': 'Standard', 'cls.standard.desc': 'All-rounder: the baseline.',
     'cls.ricochet.name': 'Ricochet', 'cls.ricochet.desc': 'Shells bounce twice, but it is slow.',
