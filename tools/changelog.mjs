@@ -1,7 +1,7 @@
 // Builds CHANGELOG.md (and GitHub release texts) from js/changelog.js.
 //   node tools/changelog.mjs              rewrite CHANGELOG.md
 //   node tools/changelog.mjs --version    print the newest version number
-//   node tools/changelog.mjs --title V    print the French title of version V
+//   node tools/changelog.mjs --title V    print the title of version V (French / English)
 //   node tools/changelog.mjs --notes V    print the release text of version V (French, then English)
 //   node tools/changelog.mjs --list       print "version commit" lines, oldest first (commit may be empty)
 import { createRequire } from 'node:module';
@@ -25,7 +25,7 @@ if (cmd === '--version') {
 } else if (cmd === '--title' || cmd === '--notes') {
   const e = find(arg);
   if (!e) { console.error(`Version ${arg} introuvable dans js/changelog.js`); process.exit(1); }
-  process.stdout.write(cmd === '--title' ? e.title.fr + '\n' : releaseText(e));
+  process.stdout.write(cmd === '--title' ? `${e.title.fr} / ${e.title.en}\n` : releaseText(e));
 } else {
   const md = ['# Notes de version', '',
     'Historique des versions de Tanks!. Ce fichier est généré à partir de `js/changelog.js` avec `node tools/changelog.mjs` : modifie plutôt ce fichier-là.', '',
